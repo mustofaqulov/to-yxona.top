@@ -1,0 +1,596 @@
+// To'yxona Top Uz - Database Schema
+// Prisma schema for wedding hall booking marketplace
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Roles
+enum UserRole {
+  CUSTOMER
+  WEDDING_HALL_OWNER
+  SERVICE_PROVIDER
+  ADMIN
+  SUPER_ADMIN
+  MANAGER
+  MODERATOR
+  SUPPORT
+  FINANCE
+}
+
+// Admin Roles
+enum AdminRole {
+  SUPER_ADMIN
+  MANAGER
+  MODERATOR
+  SUPPORT
+  FINANCE
+}
+
+// Booking Status
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+  COMPLETED
+  CANCELLED
+}
+
+// Verification Status
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  SUSPENDED
+}
+
+// Notification Type
+enum NotificationType {
+  BOOKING_ACCEPTED
+  BOOKING_REJECTED
+  BOOKING_EXPIRED
+  BOOKING_CONFIRMED
+  REVIEW_PUBLISHED
+  NEW_MESSAGE
+  SYSTEM_UPDATE
+}
+
+// User Model
+model User {
+  id                String    @id @default(cuid())
+  email             String?   @unique
+  phone             String    @unique
+  passwordHash      String
+  fullName          String
+  profileImage      String?
+  role              UserRole  @default(CUSTOMER)
+  isAdmin           Boolean   @default(false)
+  adminRole         AdminRole?
+  isActive          Boolean   @default(true)
+  emailVerified     DateTime?
+  phoneVerified     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  bookings          Booking[]
+  reviews           Review[]
+  favorites         Favorite[]
+  notifications     Notification[]
+  sentMessages      Message[]  @relation("SentMessages")
+  receivedMessages  Message[]  @relation("ReceivedMessages")
+  conversations     Conversation[] @relation("UserConversations")
+  
+  // Wedding Hall Owner relations
+  weddingHalls      WeddingHall[]
+  
+  // Service Provider relations
+  serviceProviderProfile ServiceProvider?
+
+  @@index([phone])
+  @@index([email])
+  @@index([role])
+}
+
+// Cities and Districts
+model City {
+  id          String     @id @default(cuid())
+  name        String
+  nameUz      String
+  nameRu      String
+  region      String
+  regionUz    String
+  regionRu    String
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  districts   District[]
+  weddingHalls WeddingHall[]
+
+  @@index([name])
+  @@index([isActive])
+}
+
+model District {
+  id          String     @id @default(cuid())
+  name        String
+  nameUz      String
+  nameRu      String
+  cityId      String
+  city        City       @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  weddingHalls WeddingHall[]
+
+  @@index([cityId])
+  @@index([name])
+  @@index([isActive])
+}
+
+// Wedding Hall Model
+model WeddingHall {
+  id                String              @id @default(cuid())
+  ownerId           String
+  owner             User                @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  cityId            String
+  city              City                @relation(fields: [cityId], references: [id])
+  districtId        String
+  district          District            @relation(fields: [districtId], references: [id])
+  name              String
+  slug              String              @unique
+  description       String              @db.Text
+  descriptionUz     String?             @db.Text
+  descriptionRu     String?             @db.Text
+  address           String
+  addressUz         String?
+  addressRu         String?
+  latitude          Float?
+  longitude         Float?
+  capacity          Int
+  pricePerPerson    Int?
+  totalPrice        Int
+  currency          String              @default("UZS")
+  rating            Float               @default(0)
+  reviewCount       Int                 @default(0)
+  bookingCount      Int                 @default(0)
+  viewCount         Int                 @default(0)
+  verificationStatus VerificationStatus @default(PENDING)
+  isVerified        Boolean             @default(false)
+  isFeatured        Boolean             @default(false)
+  isPromoted        Boolean             @default(false)
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  // Relations
+  images            WeddingHallImage[]
+  videos            WeddingHallVideo[]
+  services          WeddingHallService[]
+  availability      WeddingHallAvailability[]
+  bookings          Booking[]
+  reviews           Review[]
+  favorites         Favorite[]
+  promotions        Promotion[]
+
+  @@index([slug])
+  @@index([cityId])
+  @@index([districtId])
+  @@index([ownerId])
+  @@index([verificationStatus])
+  @@index([isVerified])
+  @@index([isActive])
+  @@index([rating])
+  @@index([capacity])
+  @@index([totalPrice])
+}
+
+// Wedding Hall Images
+model WeddingHallImage {
+  id          String     @id @default(cuid())
+  weddingHallId String
+  weddingHall WeddingHall @relation(fields: [weddingHallId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  thumbnailUrl String?
+  alt         String?
+  isMain      Boolean    @default(false)
+  order       Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  @@index([weddingHallId])
+  @@index([isMain])
+}
+
+// Wedding Hall Videos
+model WeddingHallVideo {
+  id          String     @id @default(cuid())
+  weddingHallId String
+  weddingHall WeddingHall @relation(fields: [weddingHallId], references: [id], onDelete: Cascade)
+  videoUrl    String
+  thumbnailUrl String?
+  title       String?
+  createdAt   DateTime   @default(now())
+
+  @@index([weddingHallId])
+}
+
+// Services
+model Service {
+  id          String     @id @default(cuid())
+  name        String
+  nameUz      String
+  nameRu      String
+  slug        String     @unique
+  description String?    @db.Text
+  descriptionUz String?  @db.Text
+  descriptionRu String?  @db.Text
+  icon        String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  weddingHallServices WeddingHallService[]
+  serviceProviderServices ServiceProviderService[]
+  bookingServices BookingService[]
+
+  @@index([slug])
+  @@index([isActive])
+}
+
+// Wedding Hall Services
+model WeddingHallService {
+  id          String     @id @default(cuid())
+  weddingHallId String
+  weddingHall WeddingHall @relation(fields: [weddingHallId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     Service    @relation(fields: [serviceId], references: [id])
+  isAvailable Boolean    @default(true)
+  price       Int?
+  createdAt   DateTime   @default(now())
+
+  @@unique([weddingHallId, serviceId])
+  @@index([weddingHallId])
+  @@index([serviceId])
+}
+
+// Wedding Hall Availability
+model WeddingHallAvailability {
+  id          String     @id @default(cuid())
+  weddingHallId String
+  weddingHall WeddingHall @relation(fields: [weddingHallId], references: [id], onDelete: Cascade)
+  date        DateTime
+  status      String     // 'available', 'booked', 'pending'
+  bookingId   String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([weddingHallId, date])
+  @@index([weddingHallId])
+  @@index([date])
+  @@index([status])
+}
+
+// Service Providers
+model ServiceProvider {
+  id          String     @id @default(cuid())
+  userId      String     @unique
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String     @db.Text
+  descriptionUz String?  @db.Text
+  descriptionRu String?  @db.Text
+  cityId      String
+  city        City       @relation(fields: [cityId], references: [id])
+  districtId  String?
+  district    District?  @relation(fields: [districtId], references: [id])
+  latitude    Float?
+  longitude   Float?
+  rating      Float      @default(0)
+  reviewCount Int        @default(0)
+  verificationStatus VerificationStatus @default(PENDING)
+  isVerified  Boolean    @default(false)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  services    ServiceProviderService[]
+  portfolio   ServiceProviderPortfolio[]
+  reviews     Review[]
+
+  @@index([userId])
+  @@index([cityId])
+  @@index([verificationStatus])
+  @@index([isActive])
+}
+
+// Service Provider Services
+model ServiceProviderService {
+  id              String           @id @default(cuid())
+  serviceProviderId String
+  serviceProvider ServiceProvider  @relation(fields: [serviceProviderId], references: [id], onDelete: Cascade)
+  serviceId       String
+  service         Service          @relation(fields: [serviceId], references: [id])
+  price           Int?
+  description     String?          @db.Text
+  createdAt       DateTime         @default(now())
+
+  @@unique([serviceProviderId, serviceId])
+  @@index([serviceProviderId])
+  @@index([serviceId])
+}
+
+// Service Provider Portfolio
+model ServiceProviderPortfolio {
+  id              String           @id @default(cuid())
+  serviceProviderId String
+  serviceProvider ServiceProvider  @relation(fields: [serviceProviderId], references: [id], onDelete: Cascade)
+  imageUrl        String
+  thumbnailUrl    String?
+  title           String?
+  description     String?          @db.Text
+  order           Int              @default(0)
+  createdAt       DateTime         @default(now())
+
+  @@index([serviceProviderId])
+}
+
+// Bookings
+model Booking {
+  id              String        @id @default(cuid())
+  userId          String
+  user            User          @relation(fields: [userId], references: [id])
+  weddingHallId   String
+  weddingHall     WeddingHall   @relation(fields: [weddingHallId], references: [id])
+  date            DateTime
+  guestCount      Int
+  budget          Int
+  totalPrice      Int
+  currency        String        @default("UZS")
+  status          BookingStatus @default(PENDING)
+  expiresAt       DateTime?
+  confirmedAt     DateTime?
+  rejectedAt      DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+  specialRequests String?       @db.Text
+  contactPhone    String
+  contactName     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  services        BookingService[]
+  reviews         Review[]
+
+  @@index([userId])
+  @@index([weddingHallId])
+  @@index([date])
+  @@index([status])
+  @@index([expiresAt])
+  @@unique([weddingHallId, date]) // Prevent double booking
+}
+
+// Booking Services
+model BookingService {
+  id          String     @id @default(cuid())
+  bookingId   String
+  booking     Booking    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  serviceId   String
+  service     Service    @relation(fields: [serviceId], references: [id])
+  price       Int
+  createdAt   DateTime   @default(now())
+
+  @@index([bookingId])
+  @@index([serviceId])
+}
+
+// Reviews
+model Review {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id])
+  weddingHallId String?
+  weddingHall WeddingHall? @relation(fields: [weddingHallId], references: [id])
+  serviceProviderId String?
+  serviceProvider ServiceProvider? @relation(fields: [serviceProviderId], references: [id])
+  bookingId   String
+  booking     Booking    @relation(fields: [bookingId], references: [id])
+  rating      Int
+  comment     String     @db.Text
+  isVerified  Boolean    @default(false)
+  isApproved  Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  images      ReviewImage[]
+
+  @@index([userId])
+  @@index([weddingHallId])
+  @@index([serviceProviderId])
+  @@index([bookingId])
+  @@index([isApproved])
+  @@unique([userId, bookingId]) // One review per booking
+}
+
+// Review Images
+model ReviewImage {
+  id          String     @id @default(cuid())
+  reviewId    String
+  review      Review     @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  imageUrl    String
+  thumbnailUrl String?
+  createdAt   DateTime   @default(now())
+
+  @@index([reviewId])
+}
+
+// Favorites
+model Favorite {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weddingHallId String
+  weddingHall WeddingHall @relation(fields: [weddingHallId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+
+  @@unique([userId, weddingHallId])
+  @@index([userId])
+  @@index([weddingHallId])
+}
+
+// Notifications
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  title       String
+  titleUz     String?
+  titleRu     String?
+  message     String           @db.Text
+  messageUz   String?          @db.Text
+  messageRu   String?          @db.Text
+  isRead      Boolean          @default(false)
+  link        String?
+  createdAt   DateTime         @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+}
+
+// Conversations (Chat)
+model Conversation {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation("UserConversations", fields: [userId], references: [id], onDelete: Cascade)
+  businessId  String
+  business    User       @relation("BusinessConversations", fields: [businessId], references: [id], onDelete: Cascade)
+  weddingHallId String?
+  serviceProviderId String?
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  messages    Message[]
+
+  @@index([userId])
+  @@index([businessId])
+  @@index([weddingHallId])
+  @@index([serviceProviderId])
+}
+
+// Messages
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId      String
+  receiver        User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  content         String       @db.Text
+  isRead          Boolean      @default(false)
+  createdAt       DateTime     @default(now())
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([receiverId])
+  @@index([isRead])
+}
+
+// Promotions
+model Promotion {
+  id          String     @id @default(cuid())
+  name        String
+  description String     @db.Text
+  startDate   DateTime
+  endDate     DateTime
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  weddingHalls WeddingHall[]
+
+  @@index([isActive])
+  @@index([startDate])
+  @@index([endDate])
+}
+
+// Verification Records
+model VerificationRecord {
+  id          String             @id @default(cuid())
+  entityType  String             // 'wedding_hall' or 'service_provider'
+  entityId    String
+  adminId     String
+  status      VerificationStatus
+  notes       String?            @db.Text
+  documents   String[]           // Array of document URLs
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([entityType])
+  @@index([entityId])
+  @@index([status])
+}
+
+// Complaints
+model Complaint {
+  id          String     @id @default(cuid())
+  userId      String
+  entityType  String     // 'wedding_hall' or 'service_provider'
+  entityId    String
+  subject     String
+  description String     @db.Text
+  status      String     @default("pending") // 'pending', 'investigating', 'resolved', 'rejected'
+  adminId     String?
+  adminNotes  String?    @db.Text
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([userId])
+  @@index([entityType])
+  @@index([entityId])
+  @@index([status])
+}
+
+// Audit Logs
+model AuditLog {
+  id          String     @id @default(cuid())
+  userId      String?
+  action      String
+  entityType  String
+  entityId    String?
+  details     String?    @db.Text
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime   @default(now())
+
+  @@index([userId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+}
+
+// Analytics Events
+model AnalyticsEvent {
+  id          String     @id @default(cuid())
+  eventType   String
+  userId      String?
+  sessionId   String?
+  properties  String?    // JSON string
+  createdAt   DateTime   @default(now())
+
+  @@index([eventType])
+  @@index([userId])
+  @@index([createdAt])
+}

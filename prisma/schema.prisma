@@ -85,6 +85,7 @@ model User {
   sentMessages      Message[]  @relation("SentMessages")
   receivedMessages  Message[]  @relation("ReceivedMessages")
   conversations     Conversation[] @relation("UserConversations")
+  businessConversations Conversation[] @relation("BusinessConversations")
   
   // Wedding Hall Owner relations
   weddingHalls      WeddingHall[]
@@ -112,6 +113,7 @@ model City {
 
   districts   District[]
   weddingHalls WeddingHall[]
+  serviceProviders ServiceProvider[]
 
   @@index([name])
   @@index([isActive])
@@ -129,6 +131,7 @@ model District {
   updatedAt   DateTime   @updatedAt
 
   weddingHalls WeddingHall[]
+  serviceProviders ServiceProvider[]
 
   @@index([cityId])
   @@index([name])
@@ -145,6 +148,8 @@ model WeddingHall {
   districtId        String
   district          District            @relation(fields: [districtId], references: [id])
   name              String
+  nameUz            String?
+  nameRu            String?
   slug              String              @unique
   description       String              @db.Text
   descriptionUz     String?             @db.Text
@@ -361,6 +366,7 @@ model Booking {
   completedAt     DateTime?
   cancelledAt     DateTime?
   specialRequests String?       @db.Text
+  food            String[]
   contactPhone    String
   contactName     String
   createdAt       DateTime      @default(now())
@@ -375,7 +381,7 @@ model Booking {
   @@index([date])
   @@index([status])
   @@index([expiresAt])
-  @@unique([weddingHallId, date]) // Prevent double booking
+  // Double booking is prevented in code (serializable transaction): cancelled/rejected bookings free the date
 }
 
 // Booking Services

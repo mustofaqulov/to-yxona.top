@@ -1,73 +1,34 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { validatePassword, hashPassword, createSession, type StoredUser } from '@/lib/auth';
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { Prisma } from '@prisma/client';
+import { db } from '@/lib/db';
+import { hashPassword, signToken, toPublicUser } from '@/lib/auth';
+import { clientIp, fail, handle, ok, rateLimit, readJson } from '@/lib/http';
+import { phoneSchema } from '@/lib/validation';
 
-// In-memory user storage (for development only)
-const users = new Map<string, StoredUser>();
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+// Only self-service roles can be requested; admin roles are never assignable here.
+const registerSchema = z.object({
+  phone: phoneSchema,
+  password: z.string().min(8, 'Parol kamida 8 belgidan iborat bo‘lishi kerak.').max(128),
+  fullName: z.string().trim().min(2, 'Ism-familiyangizni kiriting.').max(100),
+  role: z.enum(['CUSTOMER', 'WEDDING_HALL_OWNER']).default('CUSTOMER'),
+});
+
+export const POST = handle(async (request: NextRequest) => {
+  rateLimit(`register:${clientIp(request)}`, 10, 60 * 60 * 1000);
+  const input = registerSchema.parse(await readJson(request));
   try {
-    const body = await request.json();
-    const { phone, password, fullName, role = 'CUSTOMER' } = body;
-
-    // Validation
-    if (!phone || !password || !fullName) {
-      return NextResponse.json(
-        { success: false, error: { code: 'MISSING_FIELDS', message: 'All fields are required' } },
-        { status: 400 }
-      );
-    }
-
-    if (!validatePassword(password)) {
-      return NextResponse.json(
-        { success: false, error: { code: 'INVALID_PASSWORD', message: 'Password must be at least 8 characters' } },
-        { status: 400 }
-      );
-    }
-
-    // Check if user already exists
-    if (users.has(phone)) {
-      return NextResponse.json(
-        { success: false, error: { code: 'USER_EXISTS', message: 'User with this phone number already exists' } },
-        { status: 409 }
-      );
-    }
-
-    // Create user
-    const user: StoredUser = {
-      id: Math.random().toString(36).substring(2) + Date.now().toString(36),
-      phone,
-      passwordHash: hashPassword(password),
-      fullName,
-      role,
-      profileImage: null,
-      createdAt: new Date().toISOString(),
-    };
-
-    users.set(phone, user);
-
-    // Create session
-    const sessionUser = {
-      id: user.id,
-      phone: user.phone,
-      fullName: user.fullName,
-      role: user.role,
-      profileImage: user.profileImage ?? undefined,
-    };
-
-    const token = createSession(sessionUser);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        user: sessionUser,
-        token,
-      },
+    const user = await db.user.create({
+      data: { phone: input.phone, fullName: input.fullName, role: input.role, passwordHash: await hashPassword(input.password) },
     });
+    return ok({ user: toPublicUser(user), token: signToken(user) }, 201);
   } catch (error) {
-    console.error('Registration error:', error);
-    return NextResponse.json(
-      { success: false, error: { code: 'SERVER_ERROR', message: 'An error occurred during registration' } },
-      { status: 500 }
-    );
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return fail('Bu telefon raqami allaqachon ro‘yxatdan o‘tgan.', 409, 'USER_EXISTS');
+    }
+    throw error;
   }
-}
+});

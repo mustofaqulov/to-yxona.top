@@ -1,82 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyPassword, createSession, type StoredUser } from '@/lib/auth';
+import { NextRequest } from 'next/server';
+import { z } from 'zod';
+import { db } from '@/lib/db';
+import { signToken, toPublicUser, verifyPassword } from '@/lib/auth';
+import { clientIp, fail, handle, ok, rateLimit, readJson } from '@/lib/http';
+import { phoneSchema } from '@/lib/validation';
 
-// In-memory user storage (shared with register)
-const users = new Map<string, StoredUser>();
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-// Helper to load users from register's storage
-function loadUsers() {
-  // In a real app, this would come from the database
-  // For now, we'll create a demo user if none exists
-  if (users.size === 0) {
-    const demoUser: StoredUser = {
-      id: 'demo-user-1',
-      phone: '+998901234567',
-      passwordHash: Buffer.from('password123').toString('base64'),
-      fullName: 'Demo User',
-      role: 'CUSTOMER',
-      profileImage: null,
-      createdAt: new Date().toISOString(),
-    };
-    users.set('+998901234567', demoUser);
+const loginSchema = z.object({ phone: phoneSchema, password: z.string().min(1).max(128) });
+
+export const POST = handle(async (request: NextRequest) => {
+  const input = loginSchema.parse(await readJson(request));
+  rateLimit(`login:${clientIp(request)}:${input.phone}`, 8, 15 * 60 * 1000);
+  const user = await db.user.findUnique({ where: { phone: input.phone } });
+  // Same message for unknown phone and wrong password to avoid account enumeration.
+  if (!user || !user.isActive || !(await verifyPassword(input.password, user.passwordHash))) {
+    return fail('Telefon raqami yoki parol noto‘g‘ri.', 401, 'INVALID_CREDENTIALS');
   }
-}
-
-export async function POST(request: NextRequest) {
-  try {
-    loadUsers();
-    
-    const body = await request.json();
-    const { phone, password } = body;
-
-    // Validation
-    if (!phone || !password) {
-      return NextResponse.json(
-        { success: false, error: { code: 'MISSING_FIELDS', message: 'Phone and password are required' } },
-        { status: 400 }
-      );
-    }
-
-    // Find user
-    const user = users.get(phone);
-    if (!user) {
-      return NextResponse.json(
-        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid phone or password' } },
-        { status: 401 }
-      );
-    }
-
-    // Verify password
-    if (!verifyPassword(password, user.passwordHash)) {
-      return NextResponse.json(
-        { success: false, error: { code: 'INVALID_CREDENTIALS', message: 'Invalid phone or password' } },
-        { status: 401 }
-      );
-    }
-
-    // Create session
-    const sessionUser = {
-      id: user.id,
-      phone: user.phone,
-      fullName: user.fullName,
-      role: user.role,
-      profileImage: user.profileImage ?? undefined,
-    };
-
-    const token = createSession(sessionUser);
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        user: sessionUser,
-        token,
-      },
-    });
-  } catch (error) {
-    console.error('Login error:', error);
-    return NextResponse.json(
-      { success: false, error: { code: 'SERVER_ERROR', message: 'An error occurred during login' } },
-      { status: 500 }
-    );
-  }
-}
+  return ok({ user: toPublicUser(user), token: signToken(user) });
+});

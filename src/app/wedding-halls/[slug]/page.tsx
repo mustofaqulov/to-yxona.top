@@ -2,6 +2,8 @@
 
 import DatePicker, { dateValue } from '@/components/DatePicker';
 import VenueGallery from '@/components/VenueGallery';
+import { authHeaders, hasToken, useSessionUser } from '@/lib/client-auth';
+import { PHONE_PREFIX, formatPhone } from '@/lib/phone';
 import Icon from '@/components/Icon';
 import ServiceSelector, { parseSelectedServices, serviceLabel, serviceSelectionCopy } from '@/components/ServiceSelector';
 import FoodSelector, { foodLabel, foodSelectionCopy } from '@/components/FoodSelector';
@@ -86,7 +88,8 @@ function WeddingHallDetailContent({ slug, initialServices }: { slug: string; ini
   const [guestCount, setGuestCount] = useState('');
   const [showBookingModal, setShowBookingModal] = useState(false);
   const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
+  const [customerPhone, setCustomerPhone] = useState(PHONE_PREFIX);
+  const { user } = useSessionUser();
   const [bookingError, setBookingError] = useState('');
   const [bookingSuccess, setBookingSuccess] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -140,17 +143,25 @@ function WeddingHallDetailContent({ slug, initialServices }: { slug: string; ini
       return;
     }
     setBookingError('');
+    if (user) {
+      setCustomerName(current => current || user.fullName);
+      setCustomerPhone(current => current.replace(/\D/g, '').length <= 3 ? formatPhone(user.phone) : current);
+    }
     setShowBookingModal(true);
   };
 
   const submitBooking = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!hall || submitting) return;
-    setSubmitting(true);
     setBookingError('');
+    if (!hasToken()) {
+      setBookingError(language === 'uz' ? 'Buyurtma berish uchun avval tizimga kiring.' : language === 'ru' ? 'Войдите в аккаунт, чтобы забронировать.' : 'Please sign in to book.');
+      return;
+    }
+    setSubmitting(true);
     try {
       const response = await fetch('/api/bookings', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ venueSlug: hall.slug, eventDate: selectedDate, guestCount: Number(guestCount), customerName, customerPhone, services: availableSelection, food: selectedFood }),
       });
       const result = await response.json();
@@ -457,7 +468,7 @@ function WeddingHallDetailContent({ slug, initialServices }: { slug: string; ini
                 </div>
               </div>
               <label className="block"><span className="text-sm text-gray-600">{t('fullName')}</span><input className="booking-contact-input" type="text" autoComplete="name" required minLength={2} maxLength={100} value={customerName} onChange={event => setCustomerName(event.target.value)} /></label>
-              <label className="block"><span className="text-sm text-gray-600">{t('phone')}</span><input className="booking-contact-input" type="tel" autoComplete="tel" required maxLength={20} value={customerPhone} onChange={event => setCustomerPhone(event.target.value)} /></label>
+              <label className="block"><span className="text-sm text-gray-600">{t('phone')}</span><input className="booking-contact-input" type="tel" inputMode="tel" autoComplete="tel" required maxLength={20} value={customerPhone} onChange={event => setCustomerPhone(formatPhone(event.target.value))} /></label>
             </div>
             <p className="service-selector-hint">{requestCopy.note}</p>
             {bookingError && <p role="alert" className="booking-error">{bookingError}</p>}

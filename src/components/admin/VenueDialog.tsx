@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { demoServices, demoWeddingHalls } from '@/lib/demo-data';
+import type { VenueDto } from '@/lib/venue-mapper';
+import { useCatalog } from '@/lib/use-catalog';
 import { Camera, X } from 'lucide-react';
 import Image from 'next/image';
 
-export type AdminVenue = typeof demoWeddingHalls[number];
+export type AdminVenue = VenueDto;
 
 type Props = {
   venue?: AdminVenue;
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export default function VenueDialog({ venue, onClose, onCreate }: Props) {
+  const { services } = useCatalog();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState('');
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -106,7 +108,7 @@ export default function VenueDialog({ venue, onClose, onCreate }: Props) {
   return <dialog ref={dialogRef} className="venue-dialog" aria-labelledby="venue-dialog-title" onCancel={event => { event.preventDefault(); if (!saving) onClose(); }} onClick={event => { if (!saving && event.target === event.currentTarget) onClose(); }}>
     <div className="venue-dialog-content">
       <header className="venue-dialog-header"><div><span className="eyebrow">To‘yxonalar</span><h2 id="venue-dialog-title">{venue ? 'To‘yxona ma’lumotlari' : 'To‘yxona qo‘shish'}</h2></div><button type="button" className="icon-button" aria-label="Yopish" disabled={saving} onClick={onClose}><X size={20} /></button></header>
-      <p className="venue-dialog-hint">{venue ? (venue.id.startsWith('local-') ? 'Avval shu brauzerda saqlangan to‘yxona.' : 'Katalogda saqlangan to‘yxona ma’lumotlari.') : 'Manzil, narxlar va rasmlarni kiriting. Saqlangandan so‘ng to‘yxona sayt katalogida ko‘rinadi. * — majburiy maydon.'}</p>
+      <p className="venue-dialog-hint">{venue ? 'Katalogda saqlangan to‘yxona ma’lumotlari.' : 'Manzil, narxlar va rasmlarni kiriting. Saqlangandan so‘ng to‘yxona sayt katalogida ko‘rinadi. * — majburiy maydon.'}</p>
       <form onSubmit={submit} aria-busy={saving}>
         {error && <p ref={errorRef} className="venue-form-error" role="alert">{error}</p>}
         <fieldset disabled={!!venue || saving} className="venue-form-grid">
@@ -131,7 +133,7 @@ export default function VenueDialog({ venue, onClose, onCreate }: Props) {
             {!venue && <p className="venue-photo-help">Birinchi rasm katalogda asosiy rasm bo‘ladi. Rasm qo‘shilmasa standart rasm ishlatiladi.</p>}
           </section>
           <label className="venue-form-wide">Tavsif<textarea name="description" rows={3} maxLength={4000} defaultValue={venue?.descriptionUz} placeholder="To‘yxona va qulayliklari haqida" /></label>
-          <fieldset className="venue-form-wide venue-service-options"><legend>Xizmatlar</legend><div>{demoServices.map(service => <label key={service.id}><input type="checkbox" name="services" value={service.name} defaultChecked={venue?.services.includes(service.name)} />{service.nameUz}</label>)}</div></fieldset>
+          <fieldset className="venue-form-wide venue-service-options"><legend>Xizmatlar</legend><div>{services.map(service => <label key={service.id}><input type="checkbox" name="services" value={service.name} defaultChecked={venue?.services.includes(service.name)} />{service.nameUz}</label>)}</div></fieldset>
         </fieldset>
         {saving && <p role="status" className="venue-photo-help">Rasmlar yuklanmoqda va to‘yxona saqlanmoqda…</p>}
         <footer className="venue-dialog-actions"><button type="button" className="button venue-cancel" disabled={saving} onClick={onClose}>{venue ? 'Yopish' : 'Bekor qilish'}</button>{!venue && <button type="submit" disabled={saving} className="button button-primary">{saving ? 'Saqlanmoqda…' : 'To‘yxonani saqlash'}</button>}</footer>

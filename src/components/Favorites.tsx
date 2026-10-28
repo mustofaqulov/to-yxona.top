@@ -1,6 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState } from 'react';
+import { authHeaders, useSessionUser } from '@/lib/client-auth';
 
 export type FavoriteHall = {
   id: string; slug: string; name: string; nameUz?: string; nameRu?: string;
@@ -30,45 +31,80 @@ function isFavoriteHall(value: unknown): value is FavoriteHall {
     && Array.isArray(hall.images) && hall.images.length > 0 && hall.images.every(image => typeof image === 'string');
 }
 
+function readLocalFavorites(): FavoriteHall[] {
+  const raw = localStorage.getItem(storageKey);
+  const parsed: unknown = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(parsed) || !parsed.every(isFavoriteHall)) throw new Error('Invalid favorites');
+  return parsed;
+}
+
+async function request(method: 'GET' | 'POST' | 'DELETE', hallId?: string) {
+  const response = await fetch('/api/favorites', {
+    method,
+    headers: { ...authHeaders(), ...(hallId ? { 'Content-Type': 'application/json' } : {}) },
+    body: hallId ? JSON.stringify({ hallId }) : undefined,
+  });
+  const result = await response.json();
+  if (!response.ok || !result.success) throw new Error(result.error?.message || 'Favorites request failed');
+  return result.data;
+}
+
+/** Signed-in users keep favorites on the server; guests keep them in this browser. */
 export function FavoritesProvider({ children }: { children: React.ReactNode }) {
+  const { user, ready: sessionReady } = useSessionUser();
+  const userId = user?.id ?? null;
   const [favorites, setFavorites] = useState<FavoriteHall[]>([]);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(storageKey);
-      const parsed: unknown = raw ? JSON.parse(raw) : [];
-      if (!Array.isArray(parsed) || !parsed.every(isFavoriteHall)) throw new Error('Invalid favorites');
-      // Restore browser data after hydration.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFavorites(parsed);
-    } catch { setError('Sevimlilarni o‘qib bo‘lmadi. Brauzer xotirasini tekshiring.'); }
-    setReady(true);
-    const sync = (event: StorageEvent) => {
-      if (event.key !== storageKey) return;
+    if (!sessionReady) return;
+    let active = true;
+    async function load() {
+      if (!userId) {
+        try { if (active) { setFavorites(readLocalFavorites()); setError(''); } }
+        catch { if (active) setError('Sevimlilarni o‘qib bo‘lmadi. Brauzer xotirasini tekshiring.'); }
+        if (active) setReady(true);
+        return;
+      }
       try {
-        const parsed: unknown = event.newValue ? JSON.parse(event.newValue) : [];
-        if (Array.isArray(parsed) && parsed.every(isFavoriteHall)) { setFavorites(parsed); setError(''); }
-      } catch { setError('Sevimlilarni yangilab bo‘lmadi.'); }
-    };
-    window.addEventListener('storage', sync);
-    return () => window.removeEventListener('storage', sync);
-  }, []);
+        let halls: FavoriteHall[] = (await request('GET')).halls;
+        // Move favorites saved while signed out to the account, once.
+        let local: FavoriteHall[] = [];
+        try { local = readLocalFavorites(); } catch { local = []; }
+        const missing = local.filter(item => !halls.some(hall => hall.id === item.id));
+        if (missing.length) {
+          await Promise.allSettled(missing.map(item => request('POST', item.id)));
+          halls = (await request('GET')).halls;
+        }
+        try { localStorage.removeItem(storageKey); } catch { /* ignore */ }
+        if (active) { setFavorites(halls); setError(''); }
+      } catch {
+        if (active) setError('Sevimlilarni yuklab bo‘lmadi. Qayta urinib ko‘ring.');
+      }
+      if (active) setReady(true);
+    }
+    void load();
+    return () => { active = false; };
+  }, [userId, sessionReady]);
 
-  function toggleFavorite(hall: FavoriteHall) {
+  async function toggleFavorite(hall: FavoriteHall) {
     if (!ready) return;
-    const next = favorites.some(item => item.id === hall.id)
-      ? favorites.filter(item => item.id !== hall.id)
-      : [hall, ...favorites];
+    const exists = favorites.some(item => item.id === hall.id);
+    const next = exists ? favorites.filter(item => item.id !== hall.id) : [hall, ...favorites];
+    const previous = favorites;
+    setFavorites(next);
+    setError('');
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      setFavorites(next);
-      setError('');
-    } catch { setError('Sevimlilarni saqlab bo‘lmadi. Brauzer xotirasini tekshiring.'); }
+      if (userId) await request(exists ? 'DELETE' : 'POST', hall.id);
+      else localStorage.setItem(storageKey, JSON.stringify(next));
+    } catch {
+      setFavorites(previous);
+      setError('Sevimlilarni saqlab bo‘lmadi. Qayta urinib ko‘ring.');
+    }
   }
 
-  return <FavoritesContext.Provider value={{ favorites, ready, error, isFavorite: id => favorites.some(hall => hall.id === id), toggleFavorite }}>{children}</FavoritesContext.Provider>;
+  return <FavoritesContext.Provider value={{ favorites, ready, error, isFavorite: id => favorites.some(hall => hall.id === id), toggleFavorite: hall => { void toggleFavorite(hall); } }}>{children}</FavoritesContext.Provider>;
 }
 
 export function useFavorites() {

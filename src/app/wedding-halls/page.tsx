@@ -7,7 +7,7 @@ import Footer from '@/components/Footer';
 import HallCard, { type HallSummary } from '@/components/HallCard';
 import Icon from '@/components/Icon';
 import Select from '@/components/Select';
-import { demoCities } from '@/lib/demo-data';
+import { useCatalog } from '@/lib/use-catalog';
 import ServiceSelector, { parseSelectedServices } from '@/components/ServiceSelector';
 import { useAppSettings } from '@/components/AppSettings';
 import { designCopy } from '@/lib/design-copy';
@@ -24,6 +24,7 @@ function WeddingHallsResults() {
   const { t, language } = useAppSettings();
   const copy = designCopy[language];
   const params = useSearchParams();
+  const { cities } = useCatalog();
   const [filters, setFilters] = useState(() => Object.fromEntries(Object.entries(emptyFilters).map(([key, value]) => [key, params.get(key) || value])) as typeof emptyFilters);
   const [halls, setHalls] = useState<HallSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +59,7 @@ function WeddingHallsResults() {
       <div className="catalogue-layout">
         <aside id="catalogue-filters" className={'catalogue-filters' + (showFilters ? ' is-open' : '')}><div className="filter-panel">
           <div className="filter-heading"><h2>{t('filters')}</h2><button type="button" onClick={() => setFilters(emptyFilters)}>{t('clearAll')}</button></div>
-          <label className="filter-field">{t('city')}<Select aria-label={t('city')} value={filters.city} onValueChange={value => update('city', value)}><option value="">{t('selectCity')}</option>{demoCities.map(city => <option key={city.id} value={city.name}>{language === 'uz' ? city.nameUz : language === 'ru' ? city.nameRu : city.name}</option>)}</Select></label>
+          <label className="filter-field">{t('city')}<Select aria-label={t('city')} value={filters.city} onValueChange={value => update('city', value)}><option value="">{t('selectCity')}</option>{cities.map(city => <option key={city.id} value={city.name}>{language === 'uz' ? city.nameUz : language === 'ru' ? city.nameRu : city.name}</option>)}</Select></label>
           <label className="filter-field">{t('minCapacity')}<input type="text" inputMode="numeric" pattern="[0-9]*" value={filters.capacity} placeholder={copy.anyGuests} onChange={e => update('capacity', e.target.value.replace(/\D/g, ''))} /></label>
           <label className="filter-field">{t('maxBudget')}<input type="text" inputMode="numeric" pattern="[0-9]*" value={filters.budget} placeholder={copy.anyBudget} onChange={e => update('budget', e.target.value.replace(/\D/g, ''))} /></label>
           <label className="filter-field">{t('rating')}<Select aria-label={t('rating')} value={filters.rating} onValueChange={value => update('rating', value)}><option value="">{t('anyRating')}</option>{['4.5', '4', '3.5', '3'].map(value => <option key={value} value={value}>{value}+</option>)}</Select></label>

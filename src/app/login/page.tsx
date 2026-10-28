@@ -7,6 +7,8 @@ import Footer from '@/components/Footer';
 import AuthStory from '@/components/AuthStory';
 import { designCopy } from '@/lib/design-copy';
 import Link from 'next/link';
+import { storeSession } from '@/lib/client-auth';
+import { PHONE_PREFIX, formatPhone, isCompletePhone, normalizePhone } from '@/lib/phone';
 import { useAppSettings } from '@/components/AppSettings';
 
 export default function LoginPage() {
@@ -14,7 +16,7 @@ export default function LoginPage() {
   const copy = designCopy[language];
   const router = useRouter();
   const [formData, setFormData] = useState({
-    phone: '',
+    phone: PHONE_PREFIX,
     password: '',
   });
   const [loading, setLoading] = useState(false);
@@ -25,21 +27,26 @@ export default function LoginPage() {
     setLoading(true);
     setError('');
 
+    if (!isCompletePhone(formData.phone)) {
+      setError('Enter a full phone number: +998 XX XXX XX XX');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({ ...formData, phone: normalizePhone(formData.phone) }),
       });
 
       const data = await response.json();
 
       if (data.success) {
         // Store token in localStorage (for demo - use secure cookies in production)
-        localStorage.setItem('token', data.data.token);
-        localStorage.setItem('user', JSON.stringify(data.data.user));
+        storeSession(data.data.token, data.data.user);
         router.push('/');
       } else {
         setError(data.error?.message || 'Login failed');
@@ -76,8 +83,9 @@ export default function LoginPage() {
                 placeholder="+998 90 123 45 67"
                 id="login-phone"
                 autoComplete="tel"
+                inputMode="tel"
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })}
                 required
                 className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-black"
               />

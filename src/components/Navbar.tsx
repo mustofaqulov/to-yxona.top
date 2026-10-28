@@ -8,12 +8,15 @@ import { useAppSettings, type Language } from './AppSettings';
 import Select from './Select';
 import Icon from './Icon';
 import { designCopy } from '@/lib/design-copy';
+import { clearSession, isStaffRole, useSessionUser } from '@/lib/client-auth';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const { language, setLanguage, darkMode, toggleDarkMode, t } = useAppSettings();
   const copy = designCopy[language];
   const path = usePathname();
+  const { user } = useSessionUser();
+  const logoutLabel = language === 'ru' ? 'Выйти' : language === 'en' ? 'Log out' : 'Chiqish';
   const links = [
     { href: '/', label: t('home') },
     { href: '/wedding-halls', label: t('halls') },
@@ -36,14 +39,24 @@ export default function Navbar() {
             <option value="uz">UZ</option><option value="en">ENG</option><option value="ru">RU</option>
           </Select>
           <button className="icon-button theme-toggle" type="button" onClick={toggleDarkMode} aria-label={darkMode ? copy.light : copy.dark}><Icon name={darkMode ? 'sun' : 'moon'} /></button>
-          <Link href="/login" className="button button-primary header-login">{t('login')}<Icon name="arrow" width={16} /></Link>
+          {user ? <>
+            {isStaffRole(user.role) && <Link href="/admin" className="button header-login">Admin</Link>}
+            <Link href="/profile" className="button button-primary header-login">{user.fullName.split(' ')[0]}<Icon name="arrow" width={16} /></Link>
+            <button type="button" className="button header-login" onClick={clearSession}>{logoutLabel}</button>
+          </> : <Link href="/login" className="button button-primary header-login">{t('login')}<Icon name="arrow" width={16} /></Link>}
           <button className="icon-button mobile-toggle" type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-controls="mobile-menu" aria-label={copy.menu}><Icon name={open ? 'close' : 'menu'} /></button>
         </div>
       </div>
       {open && <nav id="mobile-menu" className="mobile-nav" aria-label={copy.menu}>
         {links.map(link => <Link key={link.href} href={link.href} onClick={() => setOpen(false)}>{link.label}</Link>)}
-        <Link href="/login" onClick={() => setOpen(false)}>{t('login')}</Link>
-        <Link href="/register" onClick={() => setOpen(false)}>{t('register')}</Link>
+        {user ? <>
+          {isStaffRole(user.role) && <Link href="/admin" onClick={() => setOpen(false)}>Admin</Link>}
+          <Link href="/profile" onClick={() => setOpen(false)}>{user.fullName}</Link>
+          <button type="button" onClick={() => { setOpen(false); clearSession(); }}>{logoutLabel}</button>
+        </> : <>
+          <Link href="/login" onClick={() => setOpen(false)}>{t('login')}</Link>
+          <Link href="/register" onClick={() => setOpen(false)}>{t('register')}</Link>
+        </>}
       </nav>}
     </header>
   );

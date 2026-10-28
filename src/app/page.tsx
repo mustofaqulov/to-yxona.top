@@ -1,23 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
-import HallCard from '@/components/HallCard';
+import HallCard, { type HallSummary } from '@/components/HallCard';
 import Icon from '@/components/Icon';
 import ServiceSelector, { serviceSelectionCopy } from '@/components/ServiceSelector';
 import Select from '@/components/Select';
 import DatePicker from '@/components/DatePicker';
 import { useAppSettings } from '@/components/AppSettings';
-import { demoWeddingHalls, demoCities } from '@/lib/demo-data';
+import { useCatalog } from '@/lib/use-catalog';
 import { designCopy } from '@/lib/design-copy';
 
 export default function Home() {
   const { t, language } = useAppSettings();
   const copy = designCopy[language];
   const router = useRouter();
+  const { cities } = useCatalog();
+  const [popular, setPopular] = useState<HallSummary[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch('/api/wedding-halls?sortBy=recommended', { signal: controller.signal })
+      .then(response => response.json())
+      .then(result => { if (result.success && !controller.signal.aborted) setPopular(result.data.halls.slice(0, 3)); })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const [search, setSearch] = useState({ city: '', date: '', guests: '', budget: '' });
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   function searchUrl() {
@@ -56,7 +66,7 @@ export default function Home() {
       </section>
       <section className="container search-section" aria-label={copy.searchTitle}>
         <form onSubmit={handleSearch} className="search-panel">
-          <label><span><Icon name="pin" width={16} />{t('city')}</span><Select aria-label={t('city')} value={search.city} onValueChange={value => setSearch({ ...search, city: value })}><option value="">{t('selectCity')}</option>{demoCities.map(city => <option key={city.id} value={city.name}>{language === 'uz' ? city.nameUz : language === 'ru' ? city.nameRu : city.name}</option>)}</Select></label>
+          <label><span><Icon name="pin" width={16} />{t('city')}</span><Select aria-label={t('city')} value={search.city} onValueChange={value => setSearch({ ...search, city: value })}><option value="">{t('selectCity')}</option>{cities.map(city => <option key={city.id} value={city.name}>{language === 'uz' ? city.nameUz : language === 'ru' ? city.nameRu : city.name}</option>)}</Select></label>
           <label><span><Icon name="calendar" width={16} />{t('weddingDate')}</span><DatePicker aria-label={t('weddingDate')} value={search.date} onValueChange={value => setSearch({ ...search, date: value })} /></label>
           <label><span><Icon name="users" width={16} />{t('guests')}</span><input type="text" inputMode="numeric" pattern="[0-9]*" placeholder={copy.anyGuests} value={search.guests} onChange={e => setSearch({ ...search, guests: e.target.value.replace(/\D/g, '') })} /></label>
           <label><span>{t('budget')}</span><input type="text" inputMode="numeric" pattern="[0-9]*" placeholder={copy.anyBudget} value={search.budget} onChange={e => setSearch({ ...search, budget: e.target.value.replace(/\D/g, '') })} /></label>
@@ -65,7 +75,7 @@ export default function Home() {
       </section>
       <section className="collection-section container">
         <div className="section-heading"><div><span className="eyebrow">{copy.collection}</span><h2>{copy.popular}</h2><p>{copy.popularText}</p></div><Link href="/wedding-halls" className="text-link">{copy.all}<Icon name="arrow" /></Link></div>
-        <div className="venue-grid">{demoWeddingHalls.slice(0, 3).map(hall => <HallCard key={hall.id} hall={hall} />)}</div>
+        <div className="venue-grid">{popular.map(hall => <HallCard key={hall.id} hall={hall} />)}</div>
       </section>
       <section className="services-section" id="services"><div className="container">
         <div className="section-heading"><div><span className="eyebrow">{t('services')}</span><h2>{copy.servicesTitle}</h2><p>{copy.servicesText}</p></div><span className="section-decoration" aria-hidden="true">✳</span></div>
